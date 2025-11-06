@@ -1,11 +1,3 @@
-# Ignore raw and processed data
 data/
 logs/
-
-# Ignore Python cache
-__pycache__/
-*.pyc
-
-# Ignore Jupyter checkpoints
 .ipynb_checkpoints/
-
