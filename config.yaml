@@ -1,0 +1,106 @@
+# GNN-based Cyber Threat Prediction Configuration
+# Author: Mohamed salem eddah
+# Project: Predictive Cyber Behavior Modeling Using Graph Neural Networks
+
+# Data Configuration
+data:
+  raw_dir: "/root/gnn-cyber-project/data/raw/CICIDS2017"
+  processed_dir: "data/processed"
+  graph_dir: "data/graphs"
+  sample_size: null  # Set to integer for testing (e.g., 50000), null for full dataset
+
+# Preprocessing Configuration
+preprocessing:
+  normalize: true
+  handle_outliers: true
+  engineer_features: true
+  outlier_method: "iqr"  # "iqr" or "zscore"
+  outlier_threshold: 3.0
+  normalization_method: "robust"  # "robust", "standard", or "minmax"
+
+# Graph Construction Configuration
+graph:
+  construction_method: "host_based"  # "host_based", "flow_based", or "hierarchical"
+  time_window: 300  # seconds for temporal snapshots
+  directed: true
+  aggregate_edges: true
+  min_flows: 1  # Minimum flows to create an edge
+  self_loops: false
+  include_edge_features: true
+
+# Model Configuration
+model:
+  type: "gcn"  # "gcn", "gat", "sage", "hybrid", "temporal"
+  hidden_dim: 128
+  num_layers: 3
+  dropout: 0.5
+  use_batch_norm: true
+  
+  # GAT-specific parameters
+  num_heads: 4  # Number of attention heads
+  
+  # GraphSAGE-specific parameters
+  aggregator: "mean"  # "mean", "max", or "lstm"
+  
+  # Temporal GNN parameters
+  lstm_layers: 2
+  gnn_type: "gcn"  # Base GNN type for temporal model
+
+# Training Configuration
+training:
+  num_epochs: 200
+  learning_rate: 0.001
+  weight_decay: 0.0005
+  batch_size: 1  # For full-batch training
+  patience: 30  # Early stopping patience
+  min_delta: 0.0001  # Minimum improvement for early stopping
+  scheduler_type: "plateau"  # "plateau" or "cosine"
+  use_class_weights: true  # Handle class imbalance
+  gradient_clip: 1.0  # Maximum gradient norm
+
+# Evaluation Configuration
+evaluation:
+  train_ratio: 0.6
+  val_ratio: 0.2
+  test_ratio: 0.2
+  random_state: 42  # For reproducibility
+  metrics:
+    - "accuracy"
+    - "precision"
+    - "recall"
+    - "f1"
+    - "roc_auc"
+
+# Output Configuration
+output:
+  model_dir: "models"
+  results_dir: "results"
+  visualizations_dir: "results/visualizations"
+  save_best_only: true
+  save_interval: 10  # Save checkpoint every N epochs
+
+# Logging Configuration
+logging:
+  level: "INFO"  # "DEBUG", "INFO", "WARNING", "ERROR"
+  log_dir: "logs"
+  console_output: true
+
+# Experiment Tracking
+experiment:
+  name: "cicids2017_gnn_experiment"
+  description: "GNN-based predictive cyber threat modeling on CICIDS2017 dataset"
+  tags:
+    - "cybersecurity"
+    - "graph-neural-networks"
+    - "intrusion-detection"
+    - "predictive-modeling"
+
+# Resource Configuration
+resources:
+  device: "auto"  # "auto", "cpu", or "cuda"
+  num_workers: 4  # For data loading
+  pin_memory: true  # Speed up data transfer to GPU
+
+# Reproducibility
+seed: 42
+deterministic: true
