@@ -216,7 +216,10 @@ class GNNTrainer:
              data: Data,
              num_epochs: int = 200,
              verbose: bool = True,
-             save_dir: Optional[str] = None) -> Dict:
+             save_dir: Optional[str] = None,
+             checkpoint_name: str = 'best_model.pt',
+             progress_callback=None,
+             cancel_checker=None) -> Dict:
         """
         Full training loop with early stopping.
         
@@ -225,18 +228,28 @@ class GNNTrainer:
             num_epochs: Maximum number of epochs
             verbose: Whether to print progress
             save_dir: Directory to save checkpoints
-            
+            checkpoint_name: Filename for the best checkpoint
+            progress_callback: Optional callable receiving epoch stats for UI updates
+            cancel_checker: Optional callable returning True when a cancellation is requested
+
         Returns:
             Training history
         """
         logger.info(f"Starting training for {num_epochs} epochs...")
-        
+
         if save_dir:
             save_dir = Path(save_dir)
             save_dir.mkdir(parents=True, exist_ok=True)
-        
+
+        # Reset best checkpoint tracking for this run
+        self.best_checkpoint_path = None
+
         # Training loop
         for epoch in range(num_epochs):
+            if cancel_checker and cancel_checker():
+                logger.info("Training cancelled by user request")
+                break
+
             # Train
             train_loss, train_acc, train_f1 = self.train_epoch(data)
             
@@ -268,6 +281,8 @@ class GNNTrainer:
                 # Save checkpoint
                 if save_dir:
                     checkpoint_path = save_dir / 'best_model.pt'
+                    if checkpoint_name:
+                        checkpoint_path = save_dir / checkpoint_name
                     torch.save({
                         'epoch': epoch,
                         'model_state_dict': self.model.state_dict(),
@@ -275,18 +290,28 @@ class GNNTrainer:
                         'val_loss': val_metrics['loss'],
                         'val_f1': val_metrics['f1']
                     }, checkpoint_path)
+                    self.best_checkpoint_path = checkpoint_path
             else:
                 self.epochs_no_improve += 1
-            
+
+            if progress_callback:
+                progress_callback(
+                    epoch + 1,
+                    train_loss,
+                    val_metrics['loss'],
+                    train_f1,
+                    val_metrics['f1']
+                )
+
             # Print progress
-            if verbose and (epoch + 1) % 10 == 0:
+            if verbose:
                 logger.info(
                     f"Epoch {epoch+1}/{num_epochs} | "
                     f"Train Loss: {train_loss:.4f}, Train F1: {train_f1:.4f} | "
                     f"Val Loss: {val_metrics['loss']:.4f}, Val F1: {val_metrics['f1']:.4f} | "
                     f"LR: {self.optimizer.param_groups[0]['lr']:.6f}"
                 )
-            
+
             # Early stopping
             if self.epochs_no_improve >= self.patience:
                 logger.info(f"Early stopping triggered after {epoch+1} epochs")

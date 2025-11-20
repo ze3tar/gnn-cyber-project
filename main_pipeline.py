@@ -55,6 +55,8 @@ class Pipeline:
             config_path: Path to YAML configuration file
         """
         self.config = self.load_config(config_path) if config_path else self.get_default_config()
+        self.run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.cancel_checker = lambda: False
         self.setup_directories()
         
         logger.info("="*80)
@@ -131,6 +133,13 @@ class Pipeline:
         ]
         for dir_path in dirs:
             Path(dir_path).mkdir(parents=True, exist_ok=True)
+
+    def _ensure_path(self, path: Path, description: str, remediation: str):
+        """Validate that a required path exists before continuing."""
+        if not path.exists():
+            message = f"Missing {description} at {path}. {remediation}"
+            logger.error(message)
+            raise FileNotFoundError(message)
     
     def run_data_preprocessing(self) -> str:
         """
@@ -161,6 +170,15 @@ class Pipeline:
         # Save processed data
         output_path = Path(self.config['data']['processed_dir']) / 'cicids2017_processed.csv'
         loader.save_processed_data(output_path, save_metadata=True)
+
+        # Persist data quality diagnostics in results directory for GUI/CLI consumption
+        quality_report = loader.get_data_quality_report()
+        diagnostics_dir = Path(self.config['output']['results_dir']) / 'data_quality'
+        diagnostics_dir.mkdir(parents=True, exist_ok=True)
+        diagnostics_path = diagnostics_dir / f"quality_report_{self.run_id}.json"
+        with open(diagnostics_path, 'w') as f:
+            json.dump(quality_report, f, indent=2)
+        logger.info(f"Quality diagnostics saved to {diagnostics_path}")
         
         logger.info(f"✅ Data preprocessing complete. Saved to {output_path}")
         
@@ -179,10 +197,17 @@ class Pipeline:
         logger.info("\n" + "="*80)
         logger.info("PHASE 2: GRAPH CONSTRUCTION")
         logger.info("="*80)
+
+        processed_path = Path(data_path)
+        self._ensure_path(
+            processed_path,
+            "processed CSV",
+            "Run preprocessing or verify the processed_dir setting."
+        )
         
         # Load data
         import pandas as pd
-        df = pd.read_csv(data_path)
+        df = pd.read_csv(processed_path)
         logger.info(f"Loaded {len(df):,} records")
         
         # Initialize constructor
@@ -209,7 +234,7 @@ class Pipeline:
         # Save
         graph_path = Path(self.config['data']['graph_dir']) / 'cicids_graph.gpickle'
         pyg_path = Path(self.config['data']['graph_dir']) / 'cicids_pyg_data.pt'
-        
+
         constructor.save_graph(G, graph_path)
         torch.save(pyg_data, pyg_path)
         
@@ -234,9 +259,16 @@ class Pipeline:
         logger.info("\n" + "="*80)
         logger.info("PHASE 3: MODEL TRAINING")
         logger.info("="*80)
+
+        pyg_path = Path(graph_path)
+        self._ensure_path(
+            pyg_path,
+            "PyG graph artifact",
+            "Generate it with graph construction or point to the correct graph_dir."
+        )
         
         # Load data
-        data = torch.load(graph_path)
+        data = torch.load(pyg_path)
         logger.info(f"Loaded graph: {data.num_nodes} nodes, {data.num_edges} edges")
         
         # Prepare splits
@@ -286,23 +318,58 @@ class Pipeline:
         
         # Train
         checkpoint_dir = Path(self.config['output']['model_dir']) / 'checkpoints'
+        checkpoint_name = f"{self.config['model']['type']}_{self.run_id}_best.pt"
         history = trainer.train(
             data,
             num_epochs=self.config['training']['num_epochs'],
             verbose=True,
-            save_dir=checkpoint_dir
+            save_dir=checkpoint_dir,
+            checkpoint_name=checkpoint_name,
+            progress_callback=self._log_training_progress,
+            cancel_checker=self.cancel_checker
         )
+
+        best_checkpoint = trainer.best_checkpoint_path
+        if best_checkpoint:
+            self._update_checkpoint_registry(checkpoint_dir, best_checkpoint)
         
         # Evaluate on test set
         test_metrics = trainer.test(data)
         
         # Save results
-        results_dir = Path(self.config['output']['results_dir']) / f"{self.config['model']['type']}_evaluation"
+        results_dir = Path(self.config['output']['results_dir']) / f"{self.config['model']['type']}_{self.run_id}_evaluation"
         trainer.save_results(test_metrics, results_dir)
         
         logger.info(f"✅ Training complete. Results saved to {results_dir}")
-        
+
         return {'history': history, 'test_metrics': test_metrics}
+
+    def _log_training_progress(self, epoch: int, train_loss: float, val_loss: float, train_f1: float, val_f1: float):
+        """Surface periodic training progress for UI consumers."""
+        logger.info(
+            f"Epoch {epoch} | Train Loss: {train_loss:.4f}, Train F1: {train_f1:.4f} | "
+            f"Val Loss: {val_loss:.4f}, Val F1: {val_f1:.4f}"
+        )
+
+    def _update_checkpoint_registry(self, checkpoint_dir: Path, checkpoint_path: Path):
+        """Maintain a registry of best checkpoints for quick lookup."""
+        registry_path = checkpoint_dir / 'index.json'
+        registry = {}
+        if registry_path.exists():
+            with open(registry_path, 'r') as f:
+                registry = json.load(f)
+
+        model_key = self.config['model']['type']
+        registry.setdefault(model_key, [])
+        registry[model_key].append({
+            'run_id': self.run_id,
+            'checkpoint': str(checkpoint_path),
+            'timestamp': datetime.now().isoformat()
+        })
+
+        with open(registry_path, 'w') as f:
+            json.dump(registry, f, indent=2)
+        logger.info(f"Checkpoint registry updated at {registry_path}")
     
     def run_full_pipeline(self):
         """Execute complete pipeline."""
@@ -396,6 +463,8 @@ def main():
                        help='Model type')
     parser.add_argument('--checkpoint', type=str, default=None,
                        help='Path to model checkpoint for evaluation')
+    parser.add_argument('--sample-size', type=int, default=None,
+                       help='Optional sample size to override configuration for quick experiments')
     
     args = parser.parse_args()
     
@@ -405,6 +474,9 @@ def main():
     # Override model type if specified
     if args.model:
         pipeline.config['model']['type'] = args.model
+
+    if args.sample_size is not None:
+        pipeline.config['data']['sample_size'] = args.sample_size
     
     # Execute based on mode
     if args.mode == 'full':
