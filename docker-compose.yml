@@ -1,0 +1,274 @@
+version: '3.8'
+
+# =============================================================================
+# GNN Cyber Project - Docker Compose Configuration
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # Main Application - Training Pipeline
+  # ===========================================================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: gnn-cyber:latest
+    container_name: gnn-cyber-app
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./results:/app/results
+      - ./logs:/app/logs
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      - DATA_RAW_DIR=/app/data/raw/CICIDS2017
+      - DEVICE=cpu
+      - LOG_LEVEL=INFO
+    env_file:
+      - .env
+    networks:
+      - gnn-network
+    restart: unless-stopped
+
+  # ===========================================================================
+  # GPU Training Service
+  # ===========================================================================
+  gpu-trainer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: gpu
+    image: gnn-cyber:gpu
+    container_name: gnn-cyber-gpu
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./results:/app/results
+      - ./logs:/app/logs
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      - DATA_RAW_DIR=/app/data/raw/CICIDS2017
+      - DEVICE=cuda
+      - ENABLE_GPU=true
+      - ENABLE_MIXED_PRECISION=true
+    env_file:
+      - .env
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - gnn-network
+    restart: unless-stopped
+    profiles:
+      - gpu
+
+  # ===========================================================================
+  # API Server - Model Serving
+  # ===========================================================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    image: gnn-cyber:api
+    container_name: gnn-cyber-api
+    ports:
+      - "8000:8000"
+      - "9090:9090"
+    volumes:
+      - ./models:/app/models:ro
+      - ./logs:/app/logs
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - API_WORKERS=4
+      - ENABLE_METRICS=true
+      - METRICS_PORT=9090
+    env_file:
+      - .env
+    networks:
+      - gnn-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      - redis
+
+  # ===========================================================================
+  # Redis - Caching Layer
+  # ===========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: gnn-cyber-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - gnn-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ===========================================================================
+  # PostgreSQL - Metadata Storage (Optional)
+  # ===========================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: gnn-cyber-postgres
+    environment:
+      - POSTGRES_DB=gnn_cyber
+      - POSTGRES_USER=gnn_user
+      - POSTGRES_PASSWORD=gnn_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - gnn-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gnn_user -d gnn_cyber"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - database
+
+  # ===========================================================================
+  # MLflow - Experiment Tracking
+  # ===========================================================================
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.9.0
+    container_name: gnn-cyber-mlflow
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=postgresql://gnn_user:gnn_password@postgres:5432/gnn_cyber
+      - MLFLOW_ARTIFACT_ROOT=/mlflow/artifacts
+    volumes:
+      - mlflow-artifacts:/mlflow/artifacts
+    networks:
+      - gnn-network
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri postgresql://gnn_user:gnn_password@postgres:5432/gnn_cyber
+      --default-artifact-root /mlflow/artifacts
+    profiles:
+      - mlops
+
+  # ===========================================================================
+  # Prometheus - Metrics Collection
+  # ===========================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: gnn-cyber-prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - gnn-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # ===========================================================================
+  # Grafana - Metrics Visualization
+  # ===========================================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: gnn-cyber-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - gnn-network
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+
+  # ===========================================================================
+  # Jupyter Notebook - Development Environment
+  # ===========================================================================
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    image: gnn-cyber:dev
+    container_name: gnn-cyber-jupyter
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./:/app
+      - ./data:/app/data
+      - ./models:/app/models
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+    command: >
+      jupyter lab
+      --ip=0.0.0.0
+      --port=8888
+      --no-browser
+      --allow-root
+      --NotebookApp.token=''
+      --NotebookApp.password=''
+    networks:
+      - gnn-network
+    restart: unless-stopped
+    profiles:
+      - dev
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  gnn-network:
+    driver: bridge
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  redis-data:
+    driver: local
+  postgres-data:
+    driver: local
+  mlflow-artifacts:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
