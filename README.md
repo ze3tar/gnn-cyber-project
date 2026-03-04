@@ -229,7 +229,7 @@ gnn-cyber-project/
 ### Step 1 — Clone the repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/ze3tar/gnn-cyber-project.git
 cd gnn-cyber-project
 ```
 
@@ -789,12 +789,4 @@ set_seed(42)
 ```
 
 ---
-
-## License
-
-This project is released for academic and research use.
-Please cite the CICIDS2017 dataset if you use it in published work:
-
-> Iman Sharafaldin, Arash Habibi Lashkari, and Ali A. Ghorbani,
-> "Toward Generating a New Intrusion Detection Dataset and Intrusion Traffic Characterization",
-> ICISSP 2018.
+# THIS README.md WAS WRITTEN WITH CLAUDE CODE HELP
