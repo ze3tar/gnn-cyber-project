@@ -29,6 +29,9 @@ python-dateutil>=2.8.2
 # Logging and Monitoring
 tensorboard>=2.13.0
 
+# Feature Importance (Phase 5)
+shap>=0.44.0
+
 # Jupyter (Optional for notebooks)
 jupyter>=1.0.0
 jupyterlab>=4.0.0

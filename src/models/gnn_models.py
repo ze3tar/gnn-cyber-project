@@ -390,7 +390,7 @@ class HybridGNN(nn.Module):
             input_dim, hidden_dim, hidden_dim, num_layers, dropout
         )
         self.gat = GraphAttentionNetwork(
-            input_dim, hidden_dim // 2, hidden_dim, num_layers, num_heads=2, dropout=dropout
+            input_dim, hidden_dim, hidden_dim, num_layers, num_heads=2, dropout=dropout
         )
         self.sage = GraphSAGE(
             input_dim, hidden_dim, hidden_dim, num_layers, dropout

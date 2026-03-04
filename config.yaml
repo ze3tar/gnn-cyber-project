@@ -4,7 +4,7 @@
 
 # Data Configuration
 data:
-  raw_dir: "/root/gnn-cyber-project/data/raw/CICIDS2017"
+  raw_dir: "data/raw/CICIDS2017"
   processed_dir: "data/processed"
   graph_dir: "data/graphs"
   sample_size: null  # Set to integer for testing (e.g., 50000), null for full dataset
@@ -14,7 +14,9 @@ preprocessing:
   normalize: true
   handle_outliers: true
   engineer_features: true
-  outlier_method: "iqr"  # "iqr" or "zscore"
+  deduplicate: true          # Remove duplicate records (Phase 2)
+  augment_rare: false        # Oversample rare attack classes (Phase 5)
+  outlier_method: "iqr"      # "iqr" or "zscore"
   outlier_threshold: 3.0
   normalization_method: "robust"  # "robust", "standard", or "minmax"
 
@@ -57,6 +59,7 @@ training:
   scheduler_type: "plateau"  # "plateau" or "cosine"
   use_class_weights: true  # Handle class imbalance
   gradient_clip: 1.0  # Maximum gradient norm
+  use_amp: false       # Automatic mixed precision (Phase 2; requires CUDA)
 
 # Evaluation Configuration
 evaluation:
