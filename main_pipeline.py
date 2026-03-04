@@ -357,6 +357,7 @@ class Pipeline:
         )
 
         checkpoint_dir = Path(self.config['output']['model_dir']) / 'checkpoints'
+        checkpoint_name = f"{self.config['model']['type']}_{self.run_id}_best.pt"
         history = trainer.train(
             data,
             num_epochs=self.config['training']['num_epochs'],

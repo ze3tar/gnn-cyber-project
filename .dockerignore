@@ -1,0 +1,101 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.tox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+htmlcov/
+.hypothesis/
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
+
+# Data (exclude large files)
+data/raw/
+data/processed/
+data/graphs/
+data/cache/
+*.csv
+*.parquet
+*.pkl
+*.pickle
+*.gpickle
+
+# Models and checkpoints
+models/
+checkpoints/
+*.pt
+*.pth
+*.onnx
+*.h5
+
+# Logs and results
+logs/
+results/
+*.log
+
+# Documentation
+docs/_build/
+site/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+Dockerfile
+
+# CI/CD
+.github/
+
+# Misc
+*.bak
+*.tmp
+*.temp
+.cache/
