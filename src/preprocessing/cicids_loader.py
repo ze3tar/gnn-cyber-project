@@ -634,7 +634,8 @@ class CICIDS2017Loader:
                 "Generating synthetic src_ip from row index for graph construction. "
                 "This produces a valid graph topology but node IDs are not real hosts."
             )
-            self.df['src_ip'] = '10.0.0.' + ((np.arange(len(self.df)) % 254) + 1).astype(str)
+            n = len(self.df)
+            self.df['src_ip'] = ['10.0.0.' + str((i % 254) + 1) for i in range(n)]
             src_ip_col = 'src_ip'
 
         if dst_ip_col is None:
@@ -643,7 +644,7 @@ class CICIDS2017Loader:
                 "Generating synthetic dst_ip from label_id for graph construction."
             )
             if 'label_id' in self.df.columns:
-                self.df['dst_ip'] = '10.0.1.' + ((self.df['label_id'] % 254) + 1).astype(str)
+                self.df['dst_ip'] = ['10.0.1.' + str((v % 254) + 1) for v in self.df['label_id']]
             else:
                 self.df['dst_ip'] = '10.0.1.1'
             dst_ip_col = 'dst_ip'
