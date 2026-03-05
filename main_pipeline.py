@@ -120,7 +120,12 @@ class Pipeline:
     """
 
     def __init__(self, config_path: str = None, args=None):
-        self.config = self.load_config(config_path) if config_path else self.get_default_config()
+        if config_path:
+            self.config = self.load_config(config_path)
+        elif Path('config.yaml').exists():
+            self.config = self.load_config('config.yaml')
+        else:
+            self.config = self.get_default_config()
         self.args = args  # Store CLI args so methods can access --checkpoint etc.
         self.run_id = datetime.now().strftime('%Y%m%d_%H%M%S')
         validate_config(self.config)
