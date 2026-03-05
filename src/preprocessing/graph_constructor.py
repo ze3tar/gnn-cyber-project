@@ -490,12 +490,16 @@ class AdvancedGraphConstructor:
 
         # Node labels
         y = torch.zeros(len(self.node_id_map), dtype=torch.long)
+        has_attack_col = 'is_attack' in df.columns
+        has_src_ip = 'src_ip' in df.columns
+        has_dst_ip = 'dst_ip' in df.columns
         for node_id in range(len(self.node_id_map)):
-            if node_id in G.nodes() and 'src_ip' in df.columns:
+            if node_id in G.nodes() and has_src_ip and has_attack_col:
                 ip = self.reverse_node_map.get(node_id)
                 if ip is not None:
-                    src_attacks = df[(df['src_ip'] == ip) & (df.get('is_attack', 0) == 1)]
-                    dst_attacks = df[(df['dst_ip'] == ip) & (df.get('is_attack', 0) == 1)] if 'dst_ip' in df.columns else pd.DataFrame()
+                    attack_mask = df['is_attack'] == 1
+                    src_attacks = df[(df['src_ip'] == ip) & attack_mask]
+                    dst_attacks = df[(df['dst_ip'] == ip) & attack_mask] if has_dst_ip else pd.DataFrame()
                     if len(src_attacks) > 0 or len(dst_attacks) > 0:
                         y[node_id] = 1
 
