@@ -255,6 +255,25 @@ class Pipeline:
         logger.info(f"Loaded {len(df):,} records")
 
         graph_cfg = self.config['graph']
+
+        # For flow-based graphs, sample to a manageable node count
+        # to keep memory and training time reasonable on CPU.
+        if graph_cfg['construction_method'] == 'flow_based':
+            max_flow_nodes = graph_cfg.get('max_flow_nodes', 10000)
+            if len(df) > max_flow_nodes:
+                logger.info(f"Sampling {max_flow_nodes:,} flows (stratified) for flow-based graph...")
+                benign = df[df['is_attack'] == 0]
+                attack = df[df['is_attack'] == 1]
+                attack_ratio = len(attack) / len(df)
+                n_attack = int(max_flow_nodes * attack_ratio)
+                n_benign = max_flow_nodes - n_attack
+                df = pd.concat([
+                    benign.sample(n=min(n_benign, len(benign)), random_state=42),
+                    attack.sample(n=min(n_attack, len(attack)), random_state=42)
+                ]).sample(frac=1, random_state=42).reset_index(drop=False)
+                logger.info(f"Sampled graph df: {len(df):,} rows "
+                            f"({n_benign} benign, {n_attack} attack)")
+
         constructor = AdvancedGraphConstructor(
             construction_method=graph_cfg['construction_method'],
             time_window=graph_cfg['time_window'],

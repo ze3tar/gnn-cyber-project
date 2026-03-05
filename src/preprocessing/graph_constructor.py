@@ -129,6 +129,23 @@ class AdvancedGraphConstructor:
     # Node features
     # ------------------------------------------------------------------
 
+    def _compute_flow_node_features(self, df: pd.DataFrame, G: nx.Graph) -> torch.Tensor:
+        """
+        For flow-based graphs: each node IS a flow row.
+        Use the numeric flow features from the DataFrame directly.
+        """
+        logger.info("Computing flow-based node features from DataFrame rows...")
+        exclude = {'label_id', 'is_attack', 'attack_category', 'attack_severity',
+                   'src_ip', 'dst_ip', 'src_port', 'dst_port', 'protocol', 'timestamp'}
+        numeric_cols = [c for c in df.select_dtypes(include=[np.number]).columns
+                        if c not in exclude]
+        sorted_nodes = sorted(G.nodes())
+        # Each node ID is a DataFrame index
+        subset = df.loc[sorted_nodes, numeric_cols].fillna(0.0)
+        features = torch.tensor(subset.values, dtype=torch.float)
+        logger.info(f"Flow node features computed. Shape: {features.shape}")
+        return features
+
     def _compute_node_features(self, df: pd.DataFrame, G: nx.Graph = None,
                                 use_cache: bool = True) -> torch.Tensor:
         """
@@ -486,39 +503,58 @@ class AdvancedGraphConstructor:
         """
         logger.info("Converting to PyTorch Geometric format...")
 
-        x = self._compute_node_features(df, G, use_cache=use_cache)
+        # Detect graph type: flow-based nodes carry 'is_attack' as a node attribute
+        sample_node = next(iter(G.nodes()))
+        is_flow_based = 'is_attack' in G.nodes[sample_node]
 
-        # Node labels
-        y = torch.zeros(len(self.node_id_map), dtype=torch.long)
-        has_attack_col = 'is_attack' in df.columns
-        has_src_ip = 'src_ip' in df.columns
-        has_dst_ip = 'dst_ip' in df.columns
-        for node_id in range(len(self.node_id_map)):
-            if node_id in G.nodes() and has_src_ip and has_attack_col:
-                ip = self.reverse_node_map.get(node_id)
-                if ip is not None:
-                    attack_mask = df['is_attack'] == 1
-                    src_attacks = df[(df['src_ip'] == ip) & attack_mask]
-                    dst_attacks = df[(df['dst_ip'] == ip) & attack_mask] if has_dst_ip else pd.DataFrame()
-                    if len(src_attacks) > 0 or len(dst_attacks) > 0:
-                        y[node_id] = 1
+        if is_flow_based:
+            x = self._compute_flow_node_features(df, G)
+            # Labels come directly from node attributes
+            sorted_nodes = sorted(G.nodes())
+            y = torch.tensor(
+                [G.nodes[n].get('is_attack', 0) for n in sorted_nodes],
+                dtype=torch.long
+            )
+            # Remap node IDs to compact 0..N-1 indices
+            node_remap = {n: i for i, n in enumerate(sorted_nodes)}
+        else:
+            x = self._compute_node_features(df, G, use_cache=use_cache)
+            # Labels via IP lookup
+            y = torch.zeros(len(self.node_id_map), dtype=torch.long)
+            has_attack_col = 'is_attack' in df.columns
+            has_src_ip = 'src_ip' in df.columns
+            has_dst_ip = 'dst_ip' in df.columns
+            for node_id in range(len(self.node_id_map)):
+                if node_id in G.nodes() and has_src_ip and has_attack_col:
+                    ip = self.reverse_node_map.get(node_id)
+                    if ip is not None:
+                        attack_mask = df['is_attack'] == 1
+                        src_attacks = df[(df['src_ip'] == ip) & attack_mask]
+                        dst_attacks = df[(df['dst_ip'] == ip) & attack_mask] if has_dst_ip else pd.DataFrame()
+                        if len(src_attacks) > 0 or len(dst_attacks) > 0:
+                            y[node_id] = 1
+            node_remap = None
 
         # Edges
         edge_list = []
         edge_attrs = []
 
-        for src, dst, data in G.edges(data=True):
-            edge_list.append([src, dst])
+        for src, dst, edata in G.edges(data=True):
+            # Remap node IDs to compact indices for flow-based graphs
+            s = node_remap[src] if node_remap is not None else src
+            d = node_remap[dst] if node_remap is not None else dst
+            edge_list.append([s, d])
             if include_edge_features:
                 edge_feat = [
-                    float(data.get('weight', 1.0)),
-                    float(data.get('total_packets', 0)),
-                    float(data.get('flow_duration', 0)),
-                    float(data.get('bytes_per_sec', 0)),
-                    float(data.get('is_attack', 0))
+                    float(edata.get('weight', 1.0)),
+                    float(edata.get('total_packets', 0)),
+                    float(edata.get('flow_duration', 0)),
+                    float(edata.get('bytes_per_sec', 0)),
+                    float(edata.get('is_attack', 0))
                 ]
                 edge_attrs.append(edge_feat)
 
+        num_nodes = len(G.nodes())
         if edge_list:
             edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
             edge_attr = torch.tensor(edge_attrs, dtype=torch.float) if (include_edge_features and edge_attrs) else None
@@ -534,7 +570,7 @@ class AdvancedGraphConstructor:
             edge_index=edge_index,
             edge_attr=edge_attr,
             y=y,
-            num_nodes=len(self.node_id_map)
+            num_nodes=num_nodes
         )
 
         logger.info(f"PyG Data: {data.num_nodes} nodes, {data.num_edges} edges, features {data.x.shape}")

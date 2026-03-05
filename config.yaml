@@ -7,7 +7,7 @@ data:
   raw_dir: "data/raw/CICIDS2017"
   processed_dir: "data/processed"
   graph_dir: "data/graphs"
-  sample_size: null  # Set to integer for testing (e.g., 50000), null for full dataset
+  sample_size: 300000  # ~300k rows — good balance of speed vs coverage on CPU
 
 # Preprocessing Configuration
 preprocessing:
@@ -22,7 +22,8 @@ preprocessing:
 
 # Graph Construction Configuration
 graph:
-  construction_method: "host_based"  # "host_based", "flow_based", or "hierarchical"
+  construction_method: "flow_based"  # "host_based", "flow_based", or "hierarchical"
+  max_flow_nodes: 10000  # max nodes when using flow_based (stratified sample)
   time_window: 300  # seconds for temporal snapshots
   directed: true
   aggregate_edges: true
@@ -50,7 +51,7 @@ model:
 
 # Training Configuration
 training:
-  num_epochs: 200
+  num_epochs: 100
   learning_rate: 0.001
   weight_decay: 0.0005
   batch_size: 1  # For full-batch training
