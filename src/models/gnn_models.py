@@ -449,15 +449,16 @@ def create_model(model_type: str,
         Initialized GNN model
     """
     model_type = model_type.lower()
-    
+
     if model_type == 'gcn':
         return GraphConvolutionalNetwork(
-            input_dim, hidden_dim, output_dim, num_layers, dropout, **kwargs
+            input_dim, hidden_dim, output_dim, num_layers, dropout
         )
     elif model_type == 'gat':
         return GraphAttentionNetwork(
-            input_dim, hidden_dim, output_dim, num_layers, 
-            num_heads=kwargs.get('num_heads', 4), dropout=dropout, **kwargs
+            input_dim, hidden_dim, output_dim, num_layers,
+            num_heads=kwargs.get('num_heads', 4),
+            dropout=dropout
         )
     elif model_type == 'sage':
         return GraphSAGE(
@@ -467,7 +468,8 @@ def create_model(model_type: str,
     elif model_type == 'temporal':
         return TemporalGNN(
             input_dim, hidden_dim, output_dim, num_layers,
-            lstm_layers=kwargs.get('lstm_layers', 2), dropout=dropout,
+            lstm_layers=kwargs.get('lstm_layers', 2),
+            dropout=dropout,
             gnn_type=kwargs.get('gnn_type', 'gcn')
         )
     elif model_type == 'hybrid':

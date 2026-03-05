@@ -119,8 +119,10 @@ class Pipeline:
     Handles data loading, preprocessing, graph construction, training, and evaluation.
     """
 
-    def __init__(self, config_path: str = None):
+    def __init__(self, config_path: str = None, args=None):
         self.config = self.load_config(config_path) if config_path else self.get_default_config()
+        self.args = args  # Store CLI args so methods can access --checkpoint etc.
+        self.run_id = datetime.now().strftime('%Y%m%d_%H%M%S')
         validate_config(self.config)
         self.setup_directories()
         self.device = self._resolve_device()
@@ -349,7 +351,8 @@ class Pipeline:
 
         class_weights = None
         if self.config['training']['use_class_weights']:
-            class_weights = trainer.compute_class_weights(data.y)
+            num_classes = self.config['model'].get('output_dim', 2)
+            class_weights = trainer.compute_class_weights(data.y, num_classes=num_classes)
 
         trainer.setup_training(
             class_weights=class_weights,
@@ -622,7 +625,7 @@ def main():
 
     args = parser.parse_args()
 
-    pipeline = Pipeline(args.config)
+    pipeline = Pipeline(args.config, args=args)
 
     # Override model type if specified on CLI
     if args.model:

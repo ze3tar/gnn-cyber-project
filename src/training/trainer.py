@@ -167,12 +167,23 @@ class GNNTrainer:
 
         logger.info("Training setup complete")
 
-    def compute_class_weights(self, labels: torch.Tensor) -> torch.Tensor:
-        """Compute inverse-frequency class weights for imbalanced datasets."""
+    def compute_class_weights(self, labels: torch.Tensor, num_classes: int = 2) -> torch.Tensor:
+        """
+        Compute inverse-frequency class weights for imbalanced datasets.
+        If fewer classes are present in labels than num_classes, the weight
+        tensor is padded with 1.0 so CrossEntropyLoss never gets a size mismatch.
+        """
         unique, counts = torch.unique(labels, return_counts=True)
         total = len(labels)
-        weights = total / (len(unique) * counts.float())
-        logger.info(f"Class weights: {weights}")
+        observed_weights = total / (len(unique) * counts.float())
+
+        # Build full-size weight tensor (one entry per expected class)
+        weights = torch.ones(num_classes, dtype=torch.float)
+        for cls_idx, cls_id in enumerate(unique):
+            if cls_id.item() < num_classes:
+                weights[cls_id.item()] = observed_weights[cls_idx]
+
+        logger.info(f"Class weights ({len(unique)}/{num_classes} classes present): {weights}")
         return weights
 
     # ------------------------------------------------------------------
